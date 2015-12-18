@@ -1,7 +1,7 @@
 /*
  * Dominó.cpp
  *
- * Copyright 2014 Rafael Andrade <rafaelsfg@hotmail.com>
+ * Copyright 2014 Rafael Andrade <rafaelsandrade@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
