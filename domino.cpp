@@ -24,10 +24,6 @@
  *
  * Teclas:
  * * 'p' para derrubar os dominós
- * * 'a' mover para esquerda
- * * 'd' mover para direita
- * * 's' mover para trás
- * * 'w' moer para frente
  * * 'ESC' para sair
  */
 
