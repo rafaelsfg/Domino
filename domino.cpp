@@ -1,7 +1,7 @@
 /*
  * Dominó.cpp
  *
- * Copyright 2014 Rafael Andrade <rafaelsandrade@gmail.com>
+ * Copyright 2014 Rafael Andrade <rafaelsfg@hotmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,8 @@
  *
  * Programa que simula a queda de uma fila de dominós
  *
+ * Atualizado em 18/12/2015
+ *
  * Teclas:
  * * 'p' para derrubar os dominós
  * * 'a' mover para esquerda
@@ -35,15 +37,14 @@
 #include <ode/ode.h>
 
 #define MAX_CONTATO   20          // Número máximo de contatos
-#define           G   980.0      // Define a gravidade em cm/s^2
+#define           G   9.81      // Define a gravidade em m/s^2
 #define grau          57.295779506
-#define PASSO_TEMPO   10            // Define o Passo de Tempo
+#define PASSO_TEMPO   10       // Define o Passo de Tempo
+#define VEL_GIRO      0.002   // Velocidade do giro da câmera
+#define NUM_DOMINO    60    // Número de dominós
 
-#define NUM_DOMINO    60
-
-GLfloat obsteta = 20.0, obsfi = 20.0;  //  Angulos de visualização do observador
-GLfloat d = 2.0;                   //  Distância do observador à origem
-GLfloat posx = 0.0, posy = 0.0, posz = 0.0;   //  Posição do observador
+float obsteta = 2.79, obsfi = 1.5, distancia = 1.0;  //  Angulos de visualização do observador
+unsigned int dT;    // Diferença de tempo entre os frames
 
 dWorldID Mundo;
 dSpaceID Espaco;
@@ -65,38 +66,45 @@ void InitODE(void)
     dInitODE();
     Mundo = dWorldCreate();
     dWorldSetGravity(Mundo, 0.0, 0.0, -G);
-    dWorldSetERP(Mundo, 0.7);
+
+    dWorldSetERP(Mundo, 0.5);
+    dWorldSetCFM(Mundo, 1E-5);
+    dWorldSetContactMaxCorrectingVel(Mundo, 1.0E2);
+    dWorldSetContactSurfaceLayer(Mundo, 0.0001);
+    dWorldSetDamping(Mundo, 0.0001, 0.0001);
+
+    dWorldSetAutoDisableFlag(Mundo, 1); // Ativa a auto-desabilitação
+
+    dWorldSetAutoDisableLinearThreshold(Mundo, 0.5); // Velocidade linear mínima
+
+    dWorldSetAutoDisableAngularThreshold(Mundo, 2.0); // Velocidade angular mínima
+
+    dWorldSetAutoDisableSteps(Mundo, 50);  // Número de passos para desabilitar
+
     Espaco = dHashSpaceCreate(0);
-    //dWorldSetContactMaxCorrectingVel(Mundo, 1000.0);
-    //dWorldSetContactSurfaceLayer(Mundo, 0.01);
+
 
     ////////////////  Criar Objetos  ////////////////////////////////////////
 
     dMass massa;
-    dMassSetBoxTotal (&massa, 0.01, 0.4, 2.0, 5.0);
+    dMassSetBoxTotal (&massa, 0.01, 0.004, 0.02, 0.05);
 
+    // Cria os dominós
     for(int i = 0; i < NUM_DOMINO; i++)
     {
         domino[i] = dBodyCreate(Mundo);
         dBodySetMass(domino[i], &massa);
-        dGeomSetBody(dCreateBox(Espaco, 0.4, 2.0, 5.0), domino[i]);
-        dBodySetLinearDamping(domino[i], 0.05);
+        dGeomSetBody(dCreateBox(Espaco, 0.004, 0.02, 0.05), domino[i]);
+        dBodySetPosition(domino[i], -0.4+(double)i * 0.02, 0.0, 0.025);
     }
-
-    dWorldSetAutoDisableFlag(Mundo, 1);
-    dWorldSetAutoDisableLinearThreshold(Mundo, 0.1);
 
     // Cria o chao
     plano = dCreatePlane(Espaco,0.0,0.0,1.0,0.0);
 
     //////////////////////////////////////////////////////////////////////////
+
     // Cria os contatos
     GrupoContato = dJointGroupCreate (0);
-
-    for(int i = 0; i < NUM_DOMINO; i++)
-    {
-        dBodySetPosition(domino[i], -40+(double)i * 2.0, 0.0, 2.5);
-    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -121,9 +129,9 @@ void Colisao(void *teste, dGeomID o1, dGeomID o2)
         for ( i = 0; i < NColisao; i++)
         {
             contact[i].surface.mode = dContactSlip1 | dContactSlip2 | dContactSoftERP | dContactSoftCFM | dContactApprox1;
-            contact[i].surface.mu = 1.0E1;//dInfinity;
-            contact[i].surface.slip1 = 0.9;
-            contact[i].surface.slip2 = 0.9;
+            contact[i].surface.mu = dInfinity;
+            contact[i].surface.slip1 = 10.0;
+            contact[i].surface.slip2 = 10.0;
             contact[i].surface.soft_erp = 0.5;
             contact[i].surface.soft_cfm = 0.2;
 
@@ -140,64 +148,74 @@ void Colisao(void *teste, dGeomID o1, dGeomID o2)
 //
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void Caixa( double x, double y, double z )
+void Caixa( double l, double c, double a )
 {
+    l = l / 2.0;
+    c = c / 2.0;
+    a = a / 2.0;
+
     glBegin(GL_QUADS);
-    glVertex3f(-x / 2.0, -y / 2.0, -z / 2.0);
-    glVertex3d(x / 2.0, -y / 2.0, -z / 2.0);
-    glVertex3f(x / 2.0, y / 2.0, -z / 2.0);
-    glVertex3f(-x / 2.0, y / 2.0, -z / 2.0);
+        glNormal3f(0.0, 0.0, -1.0);
+        glVertex3f(-l, -c, -a);
+        glVertex3f(l, -c, -a);
+        glVertex3f(l, c, -a);
+        glVertex3f(-l, c, -a);
     glEnd();
 
     glBegin(GL_QUADS);
-    glVertex3f(-x / 2.0, -y / 2.0, z / 2.0);
-    glVertex3f(x / 2.0, -y / 2.0, z / 2.0);
-    glVertex3f(x / 2.0, y / 2.0, z / 2.0);
-    glVertex3f(-x / 2.0, y / 2.0, z / 2.0);
+        glNormal3f(0.0, 0.0, 1.0);
+        glVertex3f(-l, -c, a);
+        glVertex3f(l, -c, a);
+        glVertex3f(l, c, a);
+        glVertex3f(-l, c, a);
     glEnd();
 
     glBegin(GL_QUADS);
-    glVertex3f(-x / 2.0, -y / 2.0, -z / 2.0);
-    glVertex3f(-x / 2.0, -y / 2.0, z / 2.0);
-    glVertex3f(-x / 2.0, y / 2.0, z / 2.0);
-    glVertex3f(-x / 2.0, y / 2.0, -z / 2.0);
+        glNormal3f(-1.0, 0.0, 0.0);
+        glVertex3f(-l, -c, -a);
+        glVertex3f(-l, -c, a);
+        glVertex3f(-l, c, a);
+        glVertex3f(-l, c, -a);
     glEnd();
 
     glBegin(GL_QUADS);
-    glVertex3f(x / 2.0, -y / 2.0, -z / 2.0);
-    glVertex3f(x / 2.0, -y / 2.0, z / 2.0);
-    glVertex3f(x / 2.0, y / 2.0, z / 2.0);
-    glVertex3f(x / 2.0, y / 2.0, -z / 2.0);
+        glNormal3f(1.0, 0.0, 0.0);
+        glVertex3f(l, -c, -a);
+        glVertex3f(l, -c, a);
+        glVertex3f(l, c, a);
+        glVertex3f(l, c, -a);
     glEnd();
 
     glBegin(GL_QUADS);
-    glVertex3f(-x / 2.0, -y / 2.0, -z / 2.0);
-    glVertex3f(-x / 2.0, -y / 2.0, z / 2.0);
-    glVertex3f(x / 2.0, -y / 2.0, z / 2.0);
-    glVertex3f(x / 2.0, -y / 2.0, -z / 2.0);
+        glNormal3f(0.0, -1.0, 0.0);
+        glVertex3f(-l, -c, -a);
+        glVertex3f(-l, -c, a);
+        glVertex3f(l, -c, a);
+        glVertex3f(l, -c, -a);
     glEnd();
 
     glBegin(GL_QUADS);
-    glVertex3f(-x / 2.0, y / 2.0, -z / 2.0);
-    glVertex3f(-x / 2.0, y / 2.0, z / 2.0);
-    glVertex3f(x / 2.0, y / 2.0, z / 2.0);
-    glVertex3f(x / 2.0, y / 2.0, -z / 2.0);
+        glNormal3f(0.0, 1.0, 0.0);
+        glVertex3f(-l, c, -a);
+        glVertex3f(-l, c, a);
+        glVertex3f(l, c, a);
+        glVertex3f(l, c, -a);
     glEnd();
 }
 
 void Desenhar(void)
 {
+    double obsx, obsy, obsz;
+
+    // Calcula a posição do observador
+    obsx = distancia * sin(obsfi) * cos(obsteta);
+    obsy = distancia * sin(obsfi) * sin(obsteta);
+    obsz = distancia * cos(obsfi);
+
+    // Posiciona a Câmera
+    glLoadIdentity();
+    gluLookAt(obsx, obsy, obsz, 0.0, 0.0, 0.0, 0.0f,0.0f,1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    //  Movimento do Espaço
-    ///////////////////////////////////////////////////////////////////////////////////////////
-
-    glPushMatrix();
-    glScalef(d, d, d);
-    glTranslatef(posx, posy, posz);
-    glRotatef(obsfi,-1,0,0);
-    glRotatef(obsteta,0,0,1);
 
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -207,7 +225,7 @@ void Desenhar(void)
     const dReal *pos, *q;
     dReal angulo, s, x1 = 0.0, x2 = 0.0, x3 = 0.0;
 
-    GLfloat posicao_luz[] = { 50.0, 50.0, 100.0, 1.0 };
+    GLfloat posicao_luz[] = { 1.0, 1.0, 1.0, 1.0 };
     glLightfv( GL_LIGHT0, GL_POSITION, posicao_luz );
     glEnable( GL_LIGHTING );
 
@@ -228,16 +246,17 @@ void Desenhar(void)
         }
         glRotatef( angulo * grau, x1, x2, x3 );
         glColor3f( 0.0, 0.0, 0.7 );
-        Caixa( 0.4, 2.0, 5.0 );
+        Caixa( 0.004, 0.02, 0.05 );
         glPopMatrix();
     }
     /// Desenha o plano
     glColor3f( 1.0, 1.0, 1.0 );
     glBegin( GL_QUADS );
-    glVertex3f( 100.0, 100.0, 0.0 );
-    glVertex3f( -100.0, 100.0, 0.0 );
-    glVertex3f( -100.0, -100.0, 0.0 );
-    glVertex3f( 100.0, -100.0, 0.0 );
+        glNormal3f(0.0, 0.0, 1.0);
+        glVertex3f( 10.0, 10.0, 0.0 );
+        glVertex3f( -10.0, 10.0, 0.0 );
+        glVertex3f( -10.0, -10.0, 0.0 );
+        glVertex3f( 10.0, -10.0, 0.0 );
     glEnd();
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -255,7 +274,7 @@ void Desenhar(void)
 
 void Iluminacao(void)
 {
-    GLfloat ambiente[] = { 0.0, 0.0, 0.0, 1.0 };
+    GLfloat ambiente[] = { 0.2, 0.2, 0.2, 1.0 };
     GLfloat difusa[] = { 1.0, 1.0, 1.0, 1.0 };
     GLfloat especular[] = { 1.0, 1.0, 1.0, 1.0 };
 
@@ -272,33 +291,19 @@ void Iluminacao(void)
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 //
-//  Função usada para especificar o volume de visualização
-//
-///////////////////////////////////////////////////////////////////////////////////////////
-
-void Visualizacao(GLfloat fAspect)
-{
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(60.0,fAspect,0.1,800);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    gluLookAt(0,100,0, 0,0,0, 0,0,1);
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////
-//
 //  Função usada para Redimensionar a Janela
 //
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void Ajustedimensao(GLsizei w, GLsizei h)
 {
-    GLfloat fAspect;
-    if ( h == 0 ) h = 1;
+    if(h == 0)
+        h = 1;
     glViewport(0, 0, w, h);
-    fAspect = (GLfloat)w/(GLfloat)h;
-    Visualizacao(fAspect);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(60.0, (GLfloat)w/(GLfloat)h, 0.01, 800);
+    glMatrixMode(GL_MODELVIEW);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -309,19 +314,20 @@ void Ajustedimensao(GLsizei w, GLsizei h)
 
 void MoveMouse(int x, int y)
 {
-    static int Xo=0, Yo=0;
-    double r=0.0,q=0.0;
+    float passo = VEL_GIRO * dT;
+    float r = 0.0f, q = 0.0f;
+    static int Xo = 0, Yo = 0;
 
-    if(x>Xo) r= 2.0;
-    if(x<Xo) r=-2.0;
-    if(y>Yo) q=2.0;
-    if(y<Yo) q=-2.0;
+    if(x > Xo) r = -passo;
+    if(x < Xo) r = passo;
+    if(y > Yo && obsfi > 0.02) q = -passo;
+    if(y < Yo && obsfi < 3.13) q = passo;
 
-    obsteta=obsteta+r;
-    obsfi=obsfi+q;
+    obsteta += r;
+    obsfi += q;
 
-    Xo=x;
-    Yo=y;
+    Xo = x;
+    Yo = y;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -332,6 +338,16 @@ void MoveMouse(int x, int y)
 
 void Timer(int w)
 {
+    // Calcula a diferença de tempo entre os frames
+    static unsigned int t0 = glutGet(GLUT_ELAPSED_TIME);
+
+    unsigned int t1 = glutGet(GLUT_ELAPSED_TIME);
+
+    dT = t1 - t0;
+
+    t0 = t1;
+    /////////
+
     dSpaceCollide (Espaco, 0, &Colisao);   //  Verifica as Colisões
 
     dWorldQuickStep(Mundo, stepSize);      //  Atualiza o Tempo e os Objetos
@@ -359,31 +375,18 @@ void Teclado(unsigned char key, int a, int b)
                 break;
 
         case '+': // Aumenta o Zoom
-                d*=1.5;
+                distancia *= 1.5;
                 break;
 
         case '-': // Diminue o Zoom
-                d/=1.5;
+                distancia /= 1.5;
                 break;
 
         case 'p': // Inicia a queda
-                dBodySetForce(domino[0], 8.0, 0.0, 0.0);
-                break;
+                if(dBodyIsEnabled(domino[0]) == 0)
+                    dBodyEnable(domino[0]);
+                dBodySetForce(domino[0], 0.08, 0.0, 0.0);
 
-        case 'a': // Ir para esquerda
-                posx -= 1.0;
-                break;
-
-        case 'd':  // Ir para direita
-                posx += 1.0;
-                break;
-
-        case 'w':  // Ir para frente
-                posy += 1.0;
-                break;
-
-        case 's':  // Ir para trás
-                posy -= 1.0;
                 break;
     }
 }
